@@ -12,6 +12,7 @@ const errorHandler = require('./middlewares/errorMiddleware');
 const authRoutes = require('./Routes/authRoutes');
 const menuRoutes = require('./Routes/menuRoutes');
 const reservationRoutes = require('./Routes/reservationRoutes'); //  added reservation routes
+const feedbackRoutes = require('./Routes/feedbackRoutes'); //  added feedback routes
 
 // Initialize app
 const app = express();
@@ -25,6 +26,7 @@ connectDB();
 app.use('/api', authRoutes);
 app.use('/api', menuRoutes);
 app.use('/api/reservations', reservationRoutes); // ✅ Registered reservation routes
+app.use('/api/feedback', feedbackRoutes); // ✅ Registered feedback routes
 
 // Error handling middleware
 app.use(errorHandler);
