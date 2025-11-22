@@ -114,15 +114,16 @@ async function getOrderById(req, res) {
     const { id } = req.params;
 
     const order = await Order.findById(id)
-      .populate('preparedBy', 'name email')
-      .populate('servedBy', 'name email');
+      .populate('userId', 'name email')
+      .populate('reservationId', 'tableNumber date time');
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Check authorization
-    if (req.user.role === 'user' && String(order.userId) !== req.user.id) {
+    // Check authorization - handle both populated and unpopulated userId
+    const orderUserId = order.userId?._id ? String(order.userId._id) : String(order.userId);
+    if (req.user.role === 'user' && orderUserId !== req.user.id) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 

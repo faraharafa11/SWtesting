@@ -65,10 +65,7 @@ async function submitFeedback(req, res) {
  */
 async function getUserFeedback(req, res) {
   try {
-    const { status} = req.query;
-
     const filter = { userId: req.user.id };
-    if (status) filter.status = status;
 
     const feedbackList = await Feedback.find(filter)
       .sort({ createdAt: -1 })
@@ -118,10 +115,9 @@ async function getFeedbackById(req, res) {
  */
 async function getAllFeedback(req, res) {
   try {
-    const { status, category, minRating} = req.query;
+    const { category, minRating} = req.query;
 
     const filter = {};
-    if (status) filter.status = status;
     if (category) filter.category = category;
     if (minRating) filter.rating = { $gte: Number(minRating) };
 

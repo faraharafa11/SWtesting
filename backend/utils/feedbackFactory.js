@@ -11,6 +11,7 @@
  * @param {String} customerName - Name of customer providing feedback
  * @param {String} customerEmail - Customer email
  * @param {Number} rating - Rating from 0-10
+ * @param {String} category - Feedback category
  * @param {String} comment - Feedback comment
  * @param {String} reservationId - Optional linked reservation ID
  * @returns {Object} Feedback object ready for database insertion
@@ -20,6 +21,7 @@ function createFeedback(
   customerName,
   customerEmail,
   rating,
+  category,
   comment,
   reservationId = null
 ) {
@@ -28,6 +30,7 @@ function createFeedback(
     customerName,
     customerEmail,
     rating,
+    category,
     comment,
     reservationId
   };
@@ -46,6 +49,7 @@ function makeFeedbackDTO(feedbackDoc) {
     customerName: feedbackDoc.customerName,
     customerEmail: feedbackDoc.customerEmail,
     rating: feedbackDoc.rating,
+    category: feedbackDoc.category,
     comment: feedbackDoc.comment,
     reservationId: feedbackDoc.reservationId ? String(feedbackDoc.reservationId) : null,
     adminResponse: feedbackDoc.adminResponse || null,
