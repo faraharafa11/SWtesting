@@ -82,9 +82,17 @@ function createOrder(
  * @returns {Object} Cleaned order object
  */
 function makeOrderDTO(orderDoc) {
+  // Handle populated userId (object) or unpopulated (ObjectId)
+  const userId = orderDoc.userId?._id ? String(orderDoc.userId._id) : String(orderDoc.userId);
+  
+  // Handle populated reservationId (object) or unpopulated (ObjectId)
+  const reservationId = orderDoc.reservationId 
+    ? (orderDoc.reservationId._id ? String(orderDoc.reservationId._id) : String(orderDoc.reservationId))
+    : null;
+
   return {
     id: String(orderDoc._id),
-    userId: String(orderDoc.userId),
+    userId: userId,
     orderNumber: orderDoc.orderNumber,
     tableNumber: orderDoc.tableNumber,
     items: orderDoc.items.map(item => ({
@@ -102,7 +110,7 @@ function makeOrderDTO(orderDoc) {
     paymentStatus: orderDoc.paymentStatus,
     paymentMethod: orderDoc.paymentMethod,
     specialRequests: orderDoc.specialRequests,
-    reservationId: orderDoc.reservationId ? String(orderDoc.reservationId) : null,
+    reservationId: reservationId,
     createdAt: orderDoc.createdAt,
     updatedAt: orderDoc.updatedAt
   };

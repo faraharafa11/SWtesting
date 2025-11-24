@@ -20,6 +20,10 @@ const createFeedbackValidators = [
   body('rating')
     .isInt({ min: 0, max: 10 }).withMessage('Rating must be between 0 and 10'),
 
+  body('category')
+    .isString().withMessage('Category must be a string')
+    .isIn(['service', 'food_quality', 'ambiance', 'value', 'cleanliness', 'overall']).withMessage('Invalid category'),
+
   body('comment')
     .isString().withMessage('Comment must be a string')
     .isLength({ min: 10, max: 1000 }).withMessage('Comment must be 10-1000 characters'),
