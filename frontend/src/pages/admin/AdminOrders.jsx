@@ -278,6 +278,19 @@ export default function AdminOrders() {
               </li>
             ))}
           </ul>
+          {selectedOrder.specialRequests && (
+  <div
+    className="muted"
+    style={{
+      marginTop: '1rem',
+      paddingTop: '1rem',
+      borderTop: '1px solid #333'
+    }}
+  >
+    <strong>Special Requests:</strong> {selectedOrder.specialRequests}
+  </div>
+)}
+
         </section>
       )}
     </div>

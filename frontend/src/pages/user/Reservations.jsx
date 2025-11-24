@@ -271,6 +271,7 @@ export default function Reservations() {
                 )}
                 <input
                   type="hidden"
+                  name="tableNumber"
                   value={form.tableNumber}
                   required
                 />
