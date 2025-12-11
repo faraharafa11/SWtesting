@@ -11,7 +11,17 @@ const { body, param, query } = require('express-validator');
  */
 const createOrderValidators = [
   body('tableNumber')
-    .isInt({ min: 1 }).withMessage('Table number must be a positive integer'),
+    .optional({ checkFalsy: true })
+    .custom((value) => {
+      // If tableNumber is provided, it must be a positive integer
+      if (value !== undefined && value !== null && value !== '') {
+        const num = Number(value);
+        if (!Number.isInteger(num) || num < 1) {
+          throw new Error('Table number must be a positive integer');
+        }
+      }
+      return true;
+    }),
 
   body('items')
     .isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
@@ -57,7 +67,7 @@ const createOrderValidators = [
     .isString().withMessage('Special requests must be a string'),
 
   body('reservationId')
-    .optional()
+    .optional({ checkFalsy: true })
     .isMongoId().withMessage('Invalid reservation ID')
 ];
 

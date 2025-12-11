@@ -38,7 +38,7 @@ export default function App() {
         <Route path="/auth/register" element={<Register />} />
       </Route>
 
-      <Route element={<ProtectedRoute />}>
+      <Route element={<ProtectedRoute roles={['user']} />}>
         <Route element={<DashboardLayout section="user" />}>
           <Route path="/user/dashboard" element={<UserDashboard />} />
           <Route path="/user/menu" element={<Menu />} />

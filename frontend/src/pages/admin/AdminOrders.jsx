@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   getAdminOrders,
@@ -29,7 +29,7 @@ export default function AdminOrders() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getAdminOrders(
@@ -47,15 +47,30 @@ export default function AdminOrders() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, logout, status, paymentStatusFilter, tableFilter]);
 
   useEffect(() => {
     loadOrders();
-  }, [token, logout, status, paymentStatusFilter, tableFilter]);
+    // Auto-refresh orders every 5 seconds to catch automatic status transitions
+    const interval = setInterval(() => {
+      loadOrders();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadOrders]);
 
   const handleStatusChange = async (orderId, nextStatus) => {
     try {
       await updateOrderStatus(orderId, nextStatus, token);
+      loadOrders();
+    } catch (err) {
+      if (err.status === 401) logout();
+      setError(err.message);
+    }
+  };
+
+  const handleMarkAsReady = async (orderId) => {
+    try {
+      await updateOrderStatus(orderId, 'ready', token);
       loadOrders();
     } catch (err) {
       if (err.status === 401) logout();
@@ -172,15 +187,18 @@ export default function AdminOrders() {
               {orders.map((order) => (
                 <tr key={order.id}>
                   <td>{order.orderNumber}</td>
-                  <td>{order.tableNumber}</td>
+                  <td>{order.tableNumber ?? 'N/A'}</td>
                   <td>
-                    <select value={order.status} onChange={(e) => handleStatusChange(order.id, e.target.value)}>
-                      {statusOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                    {order.status === 'preparing' ? (
+                      <button 
+                        className="btn-primary" 
+                        onClick={() => handleMarkAsReady(order.id)}
+                      >
+                        Mark as Ready
+                      </button>
+                    ) : (
+                      <span className={`badge badge-${order.status}`}>{order.status}</span>
+                    )}
                   </td>
                   <td>
                     <div className="payment-controls">
@@ -213,6 +231,9 @@ export default function AdminOrders() {
                       <button className="btn-danger" onClick={() => handleCancel(order.id)}>
                         Cancel
                       </button>
+                    )}
+                    {order.status === 'cancelled' && (
+                      <span className="muted">Cancelled</span>
                     )}
                   </td>
                 </tr>
@@ -263,7 +284,7 @@ export default function AdminOrders() {
             </button>
           </header>
           <p className="muted">
-            Table {selectedOrder.tableNumber} • Status {selectedOrder.status} • Payment {selectedOrder.paymentStatus}
+            {selectedOrder.tableNumber ? `Table ${selectedOrder.tableNumber}` : 'No table'} • Status {selectedOrder.status} • Payment {selectedOrder.paymentStatus}
           </p>
           <ul className="order-items">
             {selectedOrder.items.map((item) => (

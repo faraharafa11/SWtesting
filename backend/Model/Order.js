@@ -54,7 +54,8 @@ const orderSchema = new mongoose.Schema({
   },
   tableNumber: {
     type: Number,
-    required: true
+    required: false,
+    default: null
   },
   items: [orderItemSchema],
   subtotal: {
@@ -99,15 +100,6 @@ const orderSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: 500
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    index: true
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
 }, { timestamps: true });
 

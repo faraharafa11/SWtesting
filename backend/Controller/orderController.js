@@ -8,7 +8,64 @@
 const { validationResult } = require('express-validator');
 const Order = require('../Model/Order');
 const MenuItem = require('../Model/MenuItem');
+const Reservation = require('../Model/Reservation');
 const { createOrder, makeOrderDTO, generateOrderNumber } = require('../utils/orderFactory');
+
+/**
+ * @desc Automatically transition order statuses based on time
+ * pending -> confirmed after 20 seconds
+ * confirmed -> preparing after 20 seconds (40 seconds total from creation)
+ */
+async function autoTransitionOrderStatuses() {
+  try {
+    const now = new Date();
+    const twentySecondsAgo = new Date(now.getTime() - 20000); // 20 seconds ago
+    const fortySecondsAgo = new Date(now.getTime() - 40000); // 40 seconds ago
+
+    console.log(`[Auto-transition] Checking orders at ${now.toISOString()}`);
+    console.log(`[Auto-transition] Looking for pending orders created before ${twentySecondsAgo.toISOString()}`);
+    console.log(`[Auto-transition] Looking for confirmed orders created before ${fortySecondsAgo.toISOString()}`);
+
+    // First, let's check what pending orders exist
+    const pendingOrders = await Order.find({ status: 'pending' }).select('createdAt orderNumber').lean();
+    console.log(`[Auto-transition] Found ${pendingOrders.length} pending orders:`);
+    pendingOrders.forEach(order => {
+      const ageSeconds = Math.floor((now - new Date(order.createdAt)) / 1000);
+      console.log(`  - Order ${order.orderNumber}: created ${ageSeconds} seconds ago`);
+    });
+
+    // Transition pending -> confirmed (orders created 20+ seconds ago)
+    const confirmedResult = await Order.updateMany(
+      {
+        status: 'pending',
+        createdAt: { $lte: twentySecondsAgo }
+      },
+      {
+        $set: { status: 'confirmed', updatedAt: now }
+      }
+    );
+
+    // Transition confirmed -> preparing (orders created 40+ seconds ago that are still confirmed)
+    const preparingResult = await Order.updateMany(
+      {
+        status: 'confirmed',
+        createdAt: { $lte: fortySecondsAgo }
+      },
+      {
+        $set: { status: 'preparing', updatedAt: now }
+      }
+    );
+
+    // Log transitions for debugging
+    if (confirmedResult.modifiedCount > 0 || preparingResult.modifiedCount > 0) {
+      console.log(`[Auto-transition] SUCCESS: Transitioned ${confirmedResult.modifiedCount} to confirmed, ${preparingResult.modifiedCount} to preparing`);
+    } else {
+      console.log(`[Auto-transition] No orders to transition at this time`);
+    }
+  } catch (error) {
+    console.error('[Auto-transition] Error:', error);
+  }
+}
 
 /**
  * @desc Create a new order (FR6)
@@ -53,20 +110,37 @@ async function createOrder_(req, res) {
       }
     }
 
+    // Normalize reservationId (handle empty strings)
+    const normalizedReservationId = reservationId && reservationId.trim() !== '' ? reservationId : null;
+
+    // Get tableNumber from reservation if not provided
+    let finalTableNumber = tableNumber;
+    if (!finalTableNumber && normalizedReservationId) {
+      const reservation = await Reservation.findById(normalizedReservationId).lean();
+      if (reservation) {
+        finalTableNumber = reservation.tableNumber;
+      }
+    }
+
+    // If no tableNumber provided and no reservation, use null (tableNumber is now optional)
+    // This allows orders to be created without a table number
+
     const orderData = createOrder(
       req.user.id,
-      tableNumber,
+      finalTableNumber || null,
       items,
       subtotal,
       total,
-      paymentMethod,
-      specialRequests,
-      reservationId,
+      paymentMethod || 'cash',
+      specialRequests || '',
+      normalizedReservationId,
       tax || 0,
       discount || 0
     );
 
     const order = await Order.create(orderData);
+    const createdAtStr = order.createdAt ? order.createdAt.toISOString() : 'NO DATE';
+    console.log(`[Order Created] Order ${order.orderNumber} created at ${createdAtStr}, status: ${order.status}`);
     res.status(201).json({
       message: 'Order created successfully',
       order: makeOrderDTO(order)
@@ -288,9 +362,18 @@ async function cancelOrder(req, res) {
       return res.status(403).json({ message: 'Unauthorized access' });
     }
 
-    if (['preparing', 'ready', 'cancelled'].includes(order.status)) {
+    // Users can only cancel orders that are not preparing, ready, or cancelled
+    // Admins can cancel orders in any status (except already cancelled)
+    if (req.user.role === 'user' && ['preparing', 'ready', 'cancelled'].includes(order.status)) {
       return res.status(400).json({
         message: `Cannot cancel order with status: ${order.status}`
+      });
+    }
+
+    // Admins can cancel any order except already cancelled ones
+    if (order.status === 'cancelled') {
+      return res.status(400).json({
+        message: 'Order is already cancelled'
       });
     }
 
@@ -299,6 +382,50 @@ async function cancelOrder(req, res) {
 
     res.json({
       message: 'Order cancelled successfully',
+      order: makeOrderDTO(order)
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+/**
+ * @desc Auto-update order status based on time (User can update their own order)
+ * @route PUT /api/orders/:id/auto-status
+ * @access Private (User)
+ * @returns {Object} Updated order
+ */
+async function updateOrderStatusAuto(req, res) {
+  try {
+    const { id } = req.params;
+    const order = await Order.findById(id);
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check authorization - user can only update their own orders
+    if (req.user.role === 'user' && String(order.userId) !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+
+    const now = new Date();
+    const createdAt = new Date(order.createdAt);
+    const ageSeconds = Math.floor((now - createdAt) / 1000);
+
+    // Auto-transition logic
+    if (order.status === 'pending' && ageSeconds >= 20) {
+      order.status = 'confirmed';
+      order.updatedAt = now;
+      await order.save();
+    } else if (order.status === 'confirmed' && ageSeconds >= 40) {
+      order.status = 'preparing';
+      order.updatedAt = now;
+      await order.save();
+    }
+
+    res.json({
+      message: 'Order status checked',
       order: makeOrderDTO(order)
     });
   } catch (error) {
@@ -315,4 +442,5 @@ module.exports = {
   updatePaymentStatus,
   getAllOrders,
   cancelOrder,
+  updateOrderStatusAuto,
 };

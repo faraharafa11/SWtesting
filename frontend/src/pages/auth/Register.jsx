@@ -9,8 +9,7 @@ export default function Register() {
   const [form, setForm] = useState({
     name: '',
     email: '',
-    password: '',
-    role: 'user'
+    password: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -24,9 +23,9 @@ export default function Register() {
     setError(null);
     setLoading(true);
     try {
-      const result = await registerUser(form);
+      const result = await registerUser({ ...form, role: 'user' });
       login(result);
-      navigate(form.role === 'admin' ? '/admin/dashboard' : '/user/dashboard', { replace: true });
+      navigate('/user/dashboard', { replace: true });
     } catch (err) {
       setError(err.message || 'Unable to register');
     } finally {
@@ -51,13 +50,6 @@ export default function Register() {
         <label>
           Password
           <input name="password" type="password" value={form.password} onChange={handleChange} required minLength={6} />
-        </label>
-        <label>
-          Role
-          <select name="role" value={form.role} onChange={handleChange}>
-            <option value="user">Guest / User</option>
-            <option value="admin">Admin</option>
-          </select>
         </label>
         <button className="btn-primary" type="submit" disabled={loading}>
           {loading ? 'Creating account…' : 'Register'}

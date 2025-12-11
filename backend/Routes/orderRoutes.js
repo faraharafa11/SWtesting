@@ -18,6 +18,7 @@ const {
 // User routes (private)
 router.post('/orders', verifyToken, createOrderValidators, orderController.createOrder);
 router.get('/orders', verifyToken, listOrderValidators, orderController.getUserOrders);
+router.put('/orders/:id/auto-status', verifyToken, idValidators, orderController.updateOrderStatusAuto);
 router.get('/orders/:id', verifyToken, idValidators, orderController.getOrderById);
 
 // Admin/Staff routes

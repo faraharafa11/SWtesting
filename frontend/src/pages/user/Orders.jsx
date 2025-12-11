@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   fetchMenu,
   getUserOrders,
   getUserReservations,
   createOrder,
   cancelOrder,
-  getOrder
+  getOrder,
+  updateOrderStatusAuto
 } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -22,7 +23,6 @@ export default function Orders() {
   const [error, setError] = useState(null);
 
   const [form, setForm] = useState({
-    tableNumber: '',
     reservationId: '',
     paymentMethod: 'cash',
     specialRequests: ''
@@ -35,9 +35,9 @@ export default function Orders() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [menuData, orderData, reservationData] = await Promise.all([
         fetchMenu(),
         getUserOrders({}, token),
@@ -50,13 +50,64 @@ export default function Orders() {
       if (err.status === 401) logout();
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, [token, logout]);
 
   useEffect(() => {
-    loadData();
-  }, [token, logout]);
+    loadData(true); // Show loading on initial load
+  }, [loadData]);
+
+  // Auto-transition order statuses using timers
+  useEffect(() => {
+    const timers = [];
+
+    orders.forEach((order) => {
+      if (order.status === 'pending' || order.status === 'confirmed') {
+        const createdAt = new Date(order.createdAt);
+        const now = new Date();
+        const ageSeconds = Math.floor((now - createdAt) / 1000);
+
+        if (order.status === 'pending') {
+          if (ageSeconds >= 20) {
+            // Already should be confirmed - update immediately
+            updateOrderStatusAuto(order.id, token).then(() => {
+              loadData(false);
+            }).catch(err => console.error('Failed to update status:', err));
+          } else {
+            // Schedule transition to confirmed
+            const remainingSeconds = (20 - ageSeconds) * 1000;
+            const timer = setTimeout(() => {
+              updateOrderStatusAuto(order.id, token).then(() => {
+                loadData(false);
+              }).catch(err => console.error('Failed to update status:', err));
+            }, remainingSeconds);
+            timers.push(timer);
+          }
+        } else if (order.status === 'confirmed') {
+          if (ageSeconds >= 40) {
+            // Already should be preparing - update immediately
+            updateOrderStatusAuto(order.id, token).then(() => {
+              loadData(false);
+            }).catch(err => console.error('Failed to update status:', err));
+          } else {
+            // Schedule transition to preparing
+            const remainingSeconds = (40 - ageSeconds) * 1000;
+            const timer = setTimeout(() => {
+              updateOrderStatusAuto(order.id, token).then(() => {
+                loadData(false);
+              }).catch(err => console.error('Failed to update status:', err));
+            }, remainingSeconds);
+            timers.push(timer);
+          }
+        }
+      }
+    });
+
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+    };
+  }, [orders, token, loadData]);
 
   const filteredOrders = useMemo(() => {
     if (status === 'all') return orders;
@@ -86,8 +137,8 @@ export default function Orders() {
           menuItemId: item.menuItemId,
           itemName: menuItem?.name || 'Unknown item',
           price,
-          quantity,
-          specialInstructions: item.specialInstructions,
+          quantity: Math.floor(quantity), // Ensure integer
+          specialInstructions: item.specialInstructions || undefined, // Convert empty string to undefined
           lineTotal: price * quantity
         };
       });
@@ -109,29 +160,44 @@ export default function Orders() {
     setFormLoading(true);
     setFormError(null);
     const payload = {
-      tableNumber: Number(form.tableNumber),
-      reservationId: form.reservationId || undefined,
       paymentMethod: form.paymentMethod,
-      specialRequests: form.specialRequests,
+      specialRequests: form.specialRequests || '',
       items: preparedItems.map(({ lineTotal, ...item }) => item),
       subtotal: totals.subtotal,
       total: totals.total,
       tax: totals.tax,
       discount: 0
     };
+    
+    // If a reservation is selected, get tableNumber from it and include both
+    if (form.reservationId && form.reservationId.trim() !== '') {
+      const selectedReservation = reservations.find(r => r.id === form.reservationId);
+      if (selectedReservation && selectedReservation.tableNumber) {
+        payload.reservationId = form.reservationId;
+        payload.tableNumber = selectedReservation.tableNumber;
+      }
+    }
     try {
       await createOrder(payload, token);
       setForm({
-        tableNumber: '',
         reservationId: '',
         paymentMethod: 'cash',
         specialRequests: ''
       });
       setItems([{ menuItemId: '', quantity: 1, specialInstructions: '' }]);
-      loadData();
+      loadData(false); // Refresh without showing loading state
     } catch (err) {
+      console.error('Order creation error:', err);
       if (err.status === 401) logout();
-      setFormError(err.message);
+      // Handle validation errors
+      if (err.payload?.errors && Array.isArray(err.payload.errors)) {
+        const errorMessages = err.payload.errors.map(e => e.msg || e.message).join(', ');
+        setFormError(errorMessages || err.message || 'Request failed');
+      } else if (err.payload?.message) {
+        setFormError(err.payload.message);
+      } else {
+        setFormError(err.message || 'Request failed');
+      }
     } finally {
       setFormLoading(false);
     }
@@ -141,7 +207,7 @@ export default function Orders() {
     if (!window.confirm('Cancel this order?')) return;
     try {
       await cancelOrder(orderId, token);
-      loadData();
+      loadData(false); // Refresh without showing loading state
     } catch (err) {
       if (err.status === 401) logout();
       setError(err.message);
@@ -184,16 +250,6 @@ export default function Orders() {
         {formError && <div className="alert error">{formError}</div>}
         <form className="order-form" onSubmit={handleSubmit}>
           <div className="grid-three">
-            <label>
-              Table number
-              <input
-                type="number"
-                min="1"
-                required
-                value={form.tableNumber}
-                onChange={(e) => setForm((prev) => ({ ...prev, tableNumber: e.target.value }))}
-              />
-            </label>
             <label>
               Reservation
               <select
@@ -321,7 +377,7 @@ export default function Orders() {
                 {filteredOrders.map((order) => (
                   <tr key={order.id}>
                     <td>{order.orderNumber}</td>
-                    <td>{order.tableNumber}</td>
+                    <td>{order.tableNumber ?? 'N/A'}</td>
                     <td>
                       <span className={`badge badge-${order.status}`}>{order.status}</span>
                     </td>
@@ -362,7 +418,7 @@ export default function Orders() {
             </button>
           </header>
           <p className="muted">
-            Table {selectedOrder.tableNumber} • Status {selectedOrder.status} • Payment {selectedOrder.paymentStatus}
+            {selectedOrder.tableNumber ? `Table ${selectedOrder.tableNumber}` : 'No table'} • Status {selectedOrder.status} • Payment {selectedOrder.paymentStatus}
           </p>
           {selectedOrder.items && selectedOrder.items.length > 0 ? (
             <ul className="order-items">

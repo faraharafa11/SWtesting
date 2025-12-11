@@ -144,6 +144,9 @@ export const updateOrderPayment = (id, payload, token) =>
 export const cancelOrder = (id, token) =>
   request(`/admin/orders/${id}/cancel`, { method: 'PUT', token });
 
+export const updateOrderStatusAuto = (id, token) =>
+  request(`/orders/${id}/auto-status`, { method: 'PUT', token });
+
 // Feedback -------------------------------------------------------------------
 export const submitFeedback = (payload, token) =>
   request('/feedback', { method: 'POST', token, body: payload });

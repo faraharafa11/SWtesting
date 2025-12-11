@@ -16,6 +16,7 @@ async function connectDB() {
   try {
     await mongoose.connect(process.env.DB_URI || 'mongodb://localhost:27017/restaurantDB');
     console.log('MongoDB connected');
+    return mongoose.connection;
   } catch (error) {
     console.error('Database connection failed:', error.message);
     process.exit(1);

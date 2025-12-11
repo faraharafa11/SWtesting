@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAdminReservations, updateAdminReservationStatus } from '../../services/api';
 
-const statusOptions = ['pending', 'confirmed', 'completed', 'cancelled'];
+const statusOptions = ['pending', 'completed', 'cancelled'];
 
 export default function AdminReservations() {
   const { token, logout } = useAuth();
